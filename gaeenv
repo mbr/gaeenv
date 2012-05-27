@@ -84,8 +84,8 @@ def find_file(search_path, fn, followlinks=False):
 
 
 def cmd_create(ctx, args):
-    if os.path.exists(ctx['root']):
-        abort('Path already exists: %s' % ctx['root'])
+    if os.path.exists(ctx['root']) and not args.force:
+        abort('Path already exists: %s. You can use --force.' % ctx['root'])
 
     # run virtualenv
     argv = [ctx['virtualenv'], '--distribute', '--quiet', ctx['root']]
@@ -185,6 +185,7 @@ subparsers = parser.add_subparsers()
 p_create = subparsers.add_parser('create')
 p_create.set_defaults(func=cmd_create)
 p_create.add_argument('-a', '--api-version', default=1)
+p_create.add_argument('-f', '--force', default=False, action='store_true')
 p_create.add_argument('--handler', default='gae.app')
 p_create.add_argument('-n', '--name', default=None)
 p_create.add_argument('-s', '--static-url', default='/_s')
