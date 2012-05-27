@@ -7,10 +7,8 @@ recent linux distro. That's it.
 
 Usage:
 ------
-.. code-block:: shell
-
-   gaeenv myapp create
-   gaeenv myapp install flask flask-wtf itsdangerous
+* ``gaeenv myapp create``
+* ``gaeenv myapp install flask flask-wtf itsdangerous``
 
 End result will be a directory ``myapp``, containing the virtualenv, with a
 subdirectory ``src`` that will have all installed packages linked as symlinks.
