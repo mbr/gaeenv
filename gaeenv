@@ -92,7 +92,9 @@ def cmd_create(ctx, args):
     log.info('New virtualenv in %s' % ctx['virtualenv'])
     subprocess.check_call(argv)
 
-    os.mkdir(ctx['srcdir'])
+    if not os.path.exists(ctx['srcdir']):
+        os.mkdir(ctx['srcdir'])
+
     log.info('Created %s' % ctx['srcdir'])
 
     # create minimal symlinks
