@@ -174,58 +174,58 @@ def cmd_install(ctx, args):
             with open(init_py, 'wb') as f:
                 f.write(templates['namespace-init.py'])
 
+if '__main__' == __name__:
+    # sanity checks
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-v', '--virtualenv', default='virtualenv')
+    parser.add_argument('-q', '--quiet', action='store_const', dest='loglevel',
+                        default=logging.INFO, const=logging.WARNING)
+    parser.add_argument('rootdir')
 
-# sanity checks
-parser = argparse.ArgumentParser()
-parser.add_argument('-v', '--virtualenv', default='virtualenv')
-parser.add_argument('-q', '--quiet', action='store_const', dest='loglevel',
-                    default=logging.INFO, const=logging.WARNING)
-parser.add_argument('rootdir')
+    subparsers = parser.add_subparsers()
 
-subparsers = parser.add_subparsers()
+    p_create = subparsers.add_parser('create')
+    p_create.set_defaults(func=cmd_create)
+    p_create.add_argument('-a', '--api-version', default=1)
+    p_create.add_argument('-f', '--force', default=False, action='store_true')
+    p_create.add_argument('--handler', default='gae.app')
+    p_create.add_argument('-n', '--name', default=None)
+    p_create.add_argument('-s', '--static-url', default='/_s')
+    p_create.add_argument('-S', '--static-dir', default='static')
+    p_create.add_argument('-r', '--runtime', default='python27')
+    p_create.add_argument('-v', '--version', default='0-1')
+    p_create.add_argument('--no-appyaml', action='store_false',
+                          dest='appyaml', default=True)
+    p_create.add_argument('--no-gae-py', action='store_false',
+                          dest='gae_py', default=True)
+    p_create.add_argument('--no-libraries', action='store_false',
+                          dest='libraries', default=True)
+    p_create.add_argument('--no-threadsafe', action='store_false',
+                          dest='threadsafe', default=True)
 
-p_create = subparsers.add_parser('create')
-p_create.set_defaults(func=cmd_create)
-p_create.add_argument('-a', '--api-version', default=1)
-p_create.add_argument('-f', '--force', default=False, action='store_true')
-p_create.add_argument('--handler', default='gae.app')
-p_create.add_argument('-n', '--name', default=None)
-p_create.add_argument('-s', '--static-url', default='/_s')
-p_create.add_argument('-S', '--static-dir', default='static')
-p_create.add_argument('-r', '--runtime', default='python27')
-p_create.add_argument('-v', '--version', default='0-1')
-p_create.add_argument('--no-appyaml', action='store_false',
-                      dest='appyaml', default=True)
-p_create.add_argument('--no-gae-py', action='store_false',
-                      dest='gae_py', default=True)
-p_create.add_argument('--no-libraries', action='store_false',
-                      dest='libraries', default=True)
-p_create.add_argument('--no-threadsafe', action='store_false',
-                      dest='threadsafe', default=True)
+    p_install = subparsers.add_parser('install')
+    p_install.set_defaults(func=cmd_install)
+    p_install.add_argument('packages', nargs='+', help='Packages to install. '\
+        'If you want to pass options to pip, use --.')
+    p_install.add_argument('--no-fixes', action='store_false',
+                           dest='fixes', default=True)
 
-p_install = subparsers.add_parser('install')
-p_install.set_defaults(func=cmd_install)
-p_install.add_argument('packages', nargs='+', help='Packages to install. '\
-    'If you want to pass options to pip, use --.')
-p_install.add_argument('--no-fixes', action='store_false',
-                       dest='fixes', default=True)
+    args = parser.parse_args()
+    log.setLevel(args.loglevel)
 
-args = parser.parse_args()
-log.setLevel(args.loglevel)
+    root = os.path.abspath(args.rootdir)
+    ctx = {
+        'virtualenv': which(args.virtualenv),
+        'root': root,
+        'srcdir': os.path.join(root, 'src'),
+        'appname': getattr(args, 'name', None) or os.path.basename(root)
+    }
 
-root = os.path.abspath(args.rootdir)
-ctx = {
-    'virtualenv': which(args.virtualenv),
-    'root': root,
-    'srcdir': os.path.join(root, 'src'),
-    'appname': getattr(args, 'name', None) or os.path.basename(root)
-}
+    if os.path.exists(root):
+        ctx['site-packages'] = find_file(ctx['root'], 'site-packages')
+        ctx['pip'] = os.path.join(ctx['root'], 'bin', 'pip')
 
-if os.path.exists(root):
-    ctx['site-packages'] = find_file(ctx['root'], 'site-packages')
-    ctx['pip'] = os.path.join(ctx['root'], 'bin', 'pip')
+    if not ctx['virtualenv']:
+        abort('Cannot find virtualenv binary in PATH')
 
-if not ctx['virtualenv']:
-    abort('Cannot find virtualenv binary in PATH')
-
-args.func(ctx, args)
+    args.func(ctx, args)
