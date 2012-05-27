@@ -105,7 +105,7 @@ def cmd_create(ctx, args):
 
     # run virtualenv
     argv = [ctx['virtualenv'], '--distribute', '--quiet', ctx['root']]
-    log.info('New virtualenv in %s' % ctx['virtualenv'])
+    log.info('New virtualenv in %s' % ctx['root'])
     subprocess.check_call(argv)
 
     if not os.path.exists(ctx['srcdir']):
