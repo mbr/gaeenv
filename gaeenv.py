@@ -1,0 +1,227 @@
+#!/usr/bin/env python
+# coding=utf8
+
+import argparse
+from collections import OrderedDict
+from itertools import chain
+import logging
+import os
+import sys
+import subprocess
+
+import yaml
+from yaml.nodes import MappingNode
+
+logging.basicConfig()
+log = logging.getLogger()
+
+templates = {}
+templates['gae.py'] = \
+"""#!/usr/bin/env python
+# coding=utf8
+
+app = %(name)s.create_app()
+"""
+templates['namespace-init.py'] = \
+"""#!/usr/bin/env python
+# coding=utf8
+
+__import__('pkg_resources').declare_namespace(__name__)
+"""
+
+
+# lifted from https://svn6.assembla.com/svn/jwst/trunk/jwstlib/stpipe/
+#             lib/jwstlib/models/json_yaml.py
+def _dump_yaml(tree, fd):
+    def yaml_meta_representer(dumper, obj):
+        if isinstance(obj, OrderedDict):
+            # PyYAML explicitly sorts by keys on mappings, so we have
+            # to work really hard not have them sorted
+            value = []
+            node = MappingNode(
+                'tag:yaml.org,2002:map', value, flow_style=False)
+            for key, val in obj.items():
+                node_key = dumper.represent_data(key)
+                node_val = dumper.represent_data(val)
+                value.append((node_key, node_val))
+
+            return node
+        else:
+            raise TypeError('Can\'t serialize {0}'.format(obj))
+
+    yaml.SafeDumper.add_representer(None, yaml_meta_representer)
+
+    return yaml.safe_dump(tree, fd, default_flow_style=False, canonical=False)
+
+
+def abort(msg):
+    log.error(msg)
+    sys.exit(1)
+
+
+def which(cmd):
+    def is_executable(fn):
+        return os.path.exists(fn) and\
+           os.path.isfile(fn) and\
+           os.access(fn, os.X_OK)
+
+    cmd_path, cmd_file = os.path.split(cmd)
+
+    if cmd_path:
+        return cmd if is_executable(cmd) else None
+    else:
+        for p in os.environ['PATH'].split(os.pathsep):
+            fn = os.path.join(p, cmd_file)
+            if is_executable(fn):
+                return fn
+
+
+def find_file(search_path, fn, followlinks=False):
+    for dirpath, dirnames, filenames in os.walk(search_path,
+                                                followlinks=followlinks):
+        if fn in chain(filenames, dirnames):
+            return os.path.join(dirpath, fn)
+
+
+def cmd_create(ctx, args):
+    if os.path.exists(ctx['root']):
+        abort('Path already exists: %s' % ctx['root'])
+
+    # run virtualenv
+    argv = [ctx['virtualenv'], '--distribute', '--quiet', ctx['root']]
+    log.info('New virtualenv in %s' % ctx['virtualenv'])
+    subprocess.check_call(argv)
+
+    os.mkdir(ctx['srcdir'])
+    log.info('Created %s' % ctx['srcdir'])
+
+    # create minimal symlinks
+    link_endpoint = os.path.relpath(
+        find_file(ctx['root'], 'pkg_resources.py'), ctx['srcdir']
+    )
+
+    # pkg_resources.py
+    os.symlink(link_endpoint, os.path.join(ctx['srcdir'], 'pkg_resources.py'))
+
+    # create app.yaml
+    if args.appyaml:
+        with open(os.path.join(ctx['srcdir'], 'app.yaml'), 'wb') as f:
+            app_config = OrderedDict()
+            app_config['application'] = ctx['appname'],
+            app_config['version'] = '0-1',
+            app_config['api_version'] = args.api_version,
+            app_config['runtime'] = args.runtime,
+            app_config['threadsafe'] = args.threadsafe,
+            app_config['handlers'] = []
+            app_config['handlers'].append(OrderedDict(
+                [('url', '/.*'), ('script', args.handler)])
+            )
+
+            if args.static_url:
+                app_config['handlers'].insert(0, OrderedDict([
+                    ('url', args.static_url),
+                    ('static_dir', args.static_dir)
+                ]))
+
+            if args.libraries:
+                app_config['libraries'] = []
+                app_config['libraries'].append(OrderedDict([
+                    ('name', 'jinja2'),
+                ]))
+
+            _dump_yaml(app_config, f)
+            log.info('Wrote %s' % f.name)
+
+    if args.gae_py:
+        with open(os.path.join(ctx['srcdir'], 'gae.py'), 'wb') as f:
+            f.write(templates['gae.py'] % {
+                'name': ctx['appname']
+            })
+            log.info('Wrote %s' % f.name)
+
+
+def cmd_install(ctx, args):
+    before = set(os.listdir(ctx['site-packages']))
+
+    log.info('Installing %s' % ', '.join(args.packages))
+    argv = [ctx['pip'], 'install', '-q']
+    argv.extend(args.packages)
+    subprocess.check_call(argv)
+
+    after = set(os.listdir(ctx['site-packages']))
+
+    for new_item in after.difference(before):
+        fn = os.path.join(ctx['site-packages'], new_item)
+        if fn.endswith('egg-info'):
+            continue
+
+        if os.path.isdir(fn) or fn.endswith('.py'):
+            link_endpoint = os.path.relpath(fn, ctx['srcdir'])
+            link_path = os.path.join(
+                ctx['srcdir'], os.path.basename(link_endpoint)
+            )
+            os.symlink(link_endpoint, link_path)
+            log.info('New link: %s' % link_path)
+
+    if args.fixes:
+        flaskext = os.path.join(ctx['site-packages'], 'flaskext')
+        init_py = os.path.join(flaskext, '__init__.py')
+        if os.path.exists(flaskext) and\
+           not os.path.exists(init_py):
+            log.info('Fixing namespace __init__.py in flaskext')
+            with open(init_py, 'wb') as f:
+                f.write(templates['namespace-init.py'])
+
+
+# sanity checks
+parser = argparse.ArgumentParser()
+parser.add_argument('-v', '--virtualenv', default='virtualenv')
+parser.add_argument('-q', '--quiet', action='store_const', dest='loglevel',
+                    default=logging.INFO, const=logging.WARNING)
+parser.add_argument('rootdir')
+
+subparsers = parser.add_subparsers()
+
+p_create = subparsers.add_parser('create')
+p_create.set_defaults(func=cmd_create)
+p_create.add_argument('-a', '--api-version', default=1)
+p_create.add_argument('--handler', default='gae.app')
+p_create.add_argument('-n', '--name', default=None)
+p_create.add_argument('-s', '--static-url', default='/_s')
+p_create.add_argument('-S', '--static-dir', default='static')
+p_create.add_argument('-r', '--runtime', default='python27')
+p_create.add_argument('-v', '--version', default='0-1')
+p_create.add_argument('--no-appyaml', action='store_false',
+                      dest='appyaml', default=True)
+p_create.add_argument('--no-gae-py', action='store_false',
+                      dest='gae_py', default=True)
+p_create.add_argument('--no-libraries', action='store_false',
+                      dest='libraries', default=True)
+p_create.add_argument('--no-threadsafe', action='store_false',
+                      dest='threadsafe', default=True)
+
+p_install = subparsers.add_parser('install')
+p_install.set_defaults(func=cmd_install)
+p_install.add_argument('packages', nargs='+')
+p_install.add_argument('--no-fixes', action='store_false',
+                       dest='fixes', default=True)
+
+args = parser.parse_args()
+log.setLevel(args.loglevel)
+
+root = os.path.abspath(args.rootdir)
+ctx = {
+    'virtualenv': which(args.virtualenv),
+    'root': root,
+    'srcdir': os.path.join(root, 'src'),
+    'appname': getattr(args, 'name', None) or os.path.basename(root)
+}
+
+if os.path.exists(root):
+    ctx['site-packages'] = find_file(ctx['root'], 'site-packages')
+    ctx['pip'] = os.path.join(ctx['root'], 'bin', 'pip')
+
+if not ctx['virtualenv']:
+    abort('Cannot find virtualenv binary in PATH')
+
+args.func(ctx, args)
