@@ -143,7 +143,7 @@ def cmd_create(ctx, args):
 def cmd_install(ctx, args):
     before = set(os.listdir(ctx['site-packages']))
 
-    log.info('Installing %s' % ', '.join(args.packages))
+    log.info('Installing %s' % ' '.join(args.packages))
     argv = [ctx['pip'], 'install', '-q']
     argv.extend(args.packages)
     subprocess.check_call(argv)
@@ -202,7 +202,8 @@ p_create.add_argument('--no-threadsafe', action='store_false',
 
 p_install = subparsers.add_parser('install')
 p_install.set_defaults(func=cmd_install)
-p_install.add_argument('packages', nargs='+')
+p_install.add_argument('packages', nargs='+', help='Packages to install. '\
+    'If you want to pass options to pip, use --.')
 p_install.add_argument('--no-fixes', action='store_false',
                        dest='fixes', default=True)
 
