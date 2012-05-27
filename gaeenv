@@ -29,6 +29,22 @@ templates['namespace-init.py'] = \
 __import__('pkg_resources').declare_namespace(__name__)
 """
 
+def add_to_gitignore(gitignore_path, patterns):
+    with open(gitignore_path, 'ab+') as f:
+        f.seek(0)
+        buf = f.read()
+
+        # add extra newline if missing
+        if not buf.endswith('\n') and buf:
+            f.write('\n')
+
+        lines = map(lambda s: s.strip(), buf.split('\n'))
+
+        for p in patterns:
+            if not p in lines:
+                f.write('%s\n' % (p,))
+    log.info('Updated %s' % gitignore_path)
+
 
 # lifted from https://svn6.assembla.com/svn/jwst/trunk/jwstlib/stpipe/
 #             lib/jwstlib/models/json_yaml.py
@@ -141,6 +157,16 @@ def cmd_create(ctx, args):
             })
             log.info('Wrote %s' % f.name)
 
+    if args.update_gitignore:
+        add_to_gitignore(os.path.join(ctx['root'], '.gitignore'), [
+            'bin',
+            'lib',
+            'lib64',
+            'include',
+        ])
+        add_to_gitignore(os.path.join(ctx['srcdir'], '.gitignore'),
+                         ['pkg_resources.py'])
+
 
 def cmd_install(ctx, args):
     before = set(os.listdir(ctx['site-packages']))
@@ -152,6 +178,7 @@ def cmd_install(ctx, args):
 
     after = set(os.listdir(ctx['site-packages']))
 
+    git_ignores = []
     for new_item in after.difference(before):
         fn = os.path.join(ctx['site-packages'], new_item)
         if fn.endswith('egg-info'):
@@ -159,11 +186,18 @@ def cmd_install(ctx, args):
 
         if os.path.isdir(fn) or fn.endswith('.py'):
             link_endpoint = os.path.relpath(fn, ctx['srcdir'])
+            basename = os.path.basename(link_endpoint)
             link_path = os.path.join(
-                ctx['srcdir'], os.path.basename(link_endpoint)
+                ctx['srcdir'], basename
             )
             os.symlink(link_endpoint, link_path)
             log.info('New link: %s' % link_path)
+
+            git_ignores.append(basename)
+
+    if args.update_gitignore:
+        add_to_gitignore(os.path.join(ctx['srcdir'], '.gitignore'),
+                         git_ignores)
 
     if args.fixes:
         flaskext = os.path.join(ctx['site-packages'], 'flaskext')
@@ -178,6 +212,8 @@ if '__main__' == __name__:
     # sanity checks
     parser = argparse.ArgumentParser()
     parser.add_argument('-v', '--virtualenv', default='virtualenv')
+    parser.add_argument('-G', '--no-git-ignore', action='store_false',
+                        dest='update_gitignore', default=True)
     parser.add_argument('-q', '--quiet', action='store_const', dest='loglevel',
                         default=logging.INFO, const=logging.WARNING)
     parser.add_argument('rootdir')
