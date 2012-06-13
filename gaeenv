@@ -31,6 +31,7 @@ templates['namespace-init.py'] = \
 __import__('pkg_resources').declare_namespace(__name__)
 """
 
+
 def add_to_gitignore(gitignore_path, patterns):
     with open(gitignore_path, 'ab+') as f:
         f.seek(0)
