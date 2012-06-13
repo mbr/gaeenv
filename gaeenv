@@ -125,11 +125,11 @@ def cmd_create(ctx, args):
     if args.appyaml:
         with open(os.path.join(ctx['srcdir'], 'app.yaml'), 'wb') as f:
             app_config = OrderedDict()
-            app_config['application'] = ctx['appname'],
-            app_config['version'] = '0-1',
-            app_config['api_version'] = args.api_version,
-            app_config['runtime'] = args.runtime,
-            app_config['threadsafe'] = args.threadsafe,
+            app_config['application'] = ctx['appname']
+            app_config['version'] = '0-1'
+            app_config['api_version'] = args.api_version
+            app_config['runtime'] = args.runtime
+            app_config['threadsafe'] = args.threadsafe
             app_config['handlers'] = []
             app_config['handlers'].append(OrderedDict(
                 [('url', '/.*'), ('script', args.handler)])
