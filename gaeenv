@@ -20,6 +20,8 @@ templates['gae.py'] = \
 """#!/usr/bin/env python
 # coding=utf8
 
+import %(name)s
+
 app = %(name)s.create_app()
 """
 templates['namespace-init.py'] = \
@@ -138,7 +140,7 @@ def cmd_create(ctx, args):
             if args.static_url:
                 app_config['handlers'].insert(0, OrderedDict([
                     ('url', args.static_url),
-                    ('static_dir', args.static_dir)
+                    ('static_dir', ctx['appname'] + '/' + args.static_dir)
                 ]))
 
             if args.libraries:
